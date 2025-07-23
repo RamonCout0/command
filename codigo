@@ -1,0 +1,260 @@
+.data
+corPlataforma:     .word 0xa28738
+corNPC1:           .word 0x00FF0000  # Vermelho
+corNPC2:           .word 0x0000FFFF  # Ciano
+corProtagonista:   .word 0x00606060  # Cinza
+corFundo:          .word 0x00000000  # Preto
+posProtagonista:   .word 50, 62      # Linha mais alta para o canhão mais alto, Coluna
+teclado:          .word 0xffff0000
+posNPC1:          .word 0, 64        # Linha, Coluna NPC1
+posNPC2:          .word 0, 20        # Linha, Coluna NPC2
+posNPC3:          .word 0, 90        # Linha, Coluna NPC3
+posNPC4:          .word 0, 40        # Linha, Coluna NPC4
+velocidadeNPC1:   .word 1           # Velocidade do NPC1
+velocidadeNPC2:   .word 1           # Velocidade do NPC2
+velocidadeNPC3:   .word 1           # Velocidade do NPC3
+velocidadeNPC4:   .word 1           # Velocidade do NPC4
+
+.text
+.globl main
+main:
+    li $8, 0x10010000 # início do display
+    
+    # Desenhar plataforma
+    lw $9, corPlataforma
+    li $10, 54 # linha inicial
+plataforma_linhas:
+    bgt $10, 63, desenhar_protagonista_inicial
+    li $11, 0 # coluna inicial
+plataforma_colunas:
+    bge $11, 128, prox_plataforma_linha
+    mul $12, $10, 128
+    add $12, $12, $11
+    mul $12, $12, 4
+    add $13, $8, $12
+    sw $9, 0($13)
+    addi $11, $11, 1
+    j plataforma_colunas
+prox_plataforma_linha:
+    addi $10, $10, 1
+    j plataforma_linhas
+
+desenhar_protagonista_inicial:
+    lw $9, corProtagonista
+    lw $10, posProtagonista    # linha
+    lw $11, posProtagonista+4  # coluna
+    jal desenhar_canhao
+
+game_loop:
+    # Verificar entrada do teclado
+    lw $15, teclado
+    lw $16, 0($15)
+    beqz $16, mover_npcs
+    
+    lw $17, 4($15) # pegar tecla pressionada
+    beq $17, 100, mover_direita  # 'd'
+    beq $17, 97, mover_esquerda   # 'a'
+    j mover_npcs
+
+mover_direita:
+    # Apagar canhão atual
+    lw $10, posProtagonista
+    lw $11, posProtagonista+4
+    lw $9, corFundo
+    jal desenhar_canhao
+    
+    # Atualizar posição (limite direito 125 para 3 pixels de largura)
+    lw $11, posProtagonista+4
+    addi $11, $11, 1
+    li $18, 125
+    bgt $11, $18, limite_direito
+    sw $11, posProtagonista+4
+limite_direito:
+    # Desenhar canhão novo
+    lw $9, corProtagonista
+    jal desenhar_canhao
+    j mover_npcs
+
+mover_esquerda:
+    # Apagar canhão atual
+    lw $10, posProtagonista
+    lw $11, posProtagonista+4
+    lw $9, corFundo
+    jal desenhar_canhao
+    
+    # Atualizar posição (limite esquerdo 0)
+    lw $11, posProtagonista+4
+    addi $11, $11, -1
+    slt $18, $11, $0
+    bnez $18, limite_esquerdo
+    sw $11, posProtagonista+4
+limite_esquerdo:
+    # Desenhar canhão novo
+    lw $9, corProtagonista
+    jal desenhar_canhao
+
+mover_npcs:
+    # NPC1 - Movimento vertical com velocidade própria
+    lw $20, posNPC1        # linha
+    lw $21, posNPC1+4      # coluna
+    lw $22, velocidadeNPC1 # velocidade
+    
+    # Apagar NPC1 posição anterior
+    lw $9, corFundo
+    move $10, $20
+    move $11, $21
+    jal desenhar_ponto
+    
+    # Atualizar posição NPC1 (cair)
+    add $20, $20, $22
+    sw $20, posNPC1
+    
+    # Verificar se chegou ao final (reiniciar no topo)
+    li $18, 54
+    ble $20, $18, desenhar_npc1
+    li $20, 0
+    sw $20, posNPC1
+desenhar_npc1:
+    lw $9, corNPC1
+    move $10, $20
+    move $11, $21
+    jal desenhar_ponto
+
+    # NPC2 - Movimento vertical com velocidade própria
+    lw $20, posNPC2        # linha
+    lw $21, posNPC2+4      # coluna
+    lw $22, velocidadeNPC2 # velocidade
+    
+    # Apagar NPC2 posição anterior
+    lw $9, corFundo
+    move $10, $20
+    move $11, $21
+    jal desenhar_ponto
+    
+    # Atualizar posição NPC2 (cair)
+    add $20, $20, $22
+    sw $20, posNPC2
+    
+    # Verificar se chegou ao final (reiniciar no topo)
+    li $18, 54
+    ble $20, $18, desenhar_npc2
+    li $20, 0
+    sw $20, posNPC2
+desenhar_npc2:
+    lw $9, corNPC2
+    move $10, $20
+    move $11, $21
+    jal desenhar_ponto
+
+    # NPC3 - Movimento vertical com velocidade própria
+    lw $20, posNPC3        # linha
+    lw $21, posNPC3+4      # coluna
+    lw $22, velocidadeNPC3 # velocidade
+    
+    # Apagar NPC3 posição anterior
+    lw $9, corFundo
+    move $10, $20
+    move $11, $21
+    jal desenhar_ponto
+    
+    # Atualizar posição NPC3 (cair)
+    add $20, $20, $22
+    sw $20, posNPC3
+    
+    # Verificar se chegou ao final (reiniciar no topo)
+    li $18, 54
+    ble $20, $18, desenhar_npc3
+    li $20, 0
+    sw $20, posNPC3
+desenhar_npc3:
+    lw $9, corNPC1
+    move $10, $20
+    move $11, $21
+    jal desenhar_ponto
+
+    # NPC4 - Movimento vertical com velocidade própria
+    lw $20, posNPC4        # linha
+    lw $21, posNPC4+4      # coluna
+    lw $22, velocidadeNPC4 # velocidade
+    
+    # Apagar NPC4 posição anterior
+    lw $9, corFundo
+    move $10, $20
+    move $11, $21
+    jal desenhar_ponto
+    
+    # Atualizar posição NPC4 (cair)
+    add $20, $20, $22
+    sw $20, posNPC4
+    
+    # Verificar se chegou ao final (reiniciar no topo)
+    li $18, 54
+    ble $20, $18, desenhar_npc4
+    li $20, 0
+    sw $20, posNPC4
+desenhar_npc4:
+    lw $9, corNPC2
+    move $10, $20
+    move $11, $21
+    jal desenhar_ponto
+
+    jal delay
+    j game_loop
+
+desenhar_canhao:
+    # Desenha um canhão de 3x4 pixels
+    li $14, 0          # contador de linhas (0 a 3)
+canhao_loop:
+    bge $14, 4, fim_canhao
+    li $15, 0          # contador de colunas (0 a 2)
+canhao_colunas:
+    bge $15, 3, prox_canhao_linha
+    
+    # Calcular posição
+    add $16, $10, $14  # linha atual
+    add $17, $11, $15  # coluna atual
+    
+    # Verificar limites
+    bge $16, 64, prox_canhao_linha  # abaixo da tela
+    blt $16, 0, prox_canhao_linha   # acima da tela
+    bge $17, 128, prox_canhao_coluna # direita da tela
+    blt $17, 0, prox_canhao_coluna   # esquerda da tela
+    
+    # Desenhar pixel
+    mul $18, $16, 128
+    add $18, $18, $17
+    mul $18, $18, 4
+    add $19, $8, $18
+    sw $9, 0($19)
+    
+prox_canhao_coluna:
+    addi $15, $15, 1
+    j canhao_colunas
+    
+prox_canhao_linha:
+    addi $14, $14, 1
+    j canhao_loop
+fim_canhao:
+    jr $ra
+
+desenhar_ponto:
+    # Desenha um ponto (1 pixel)
+    mul $12, $10, 128
+    add $12, $12, $11
+    mul $12, $12, 4
+    add $13, $8, $12
+    sw $9, 0($13)
+    jr $ra
+
+delay:
+    li $14, 25000  # Ajuste este valor para mudar a velocidade geral do jogo
+espera:
+    beqz $14, fim_delay
+    addi $14, $14, -1
+    j espera
+fim_delay:
+    jr $ra
+
+fim:
+    addi $2, $0, 10
+    syscall
