@@ -1,31 +1,41 @@
 .data
 corPlataforma:     .word 0xa28738
-corNPC1:           .word 0x00FF0000  # Vermelho
-corNPC2:           .word 0x0000FFFF  # Ciano
-corProtagonista:   .word 0x00606060  # Cinza
-corFundo:          .word 0x00000000  # Preto
-posProtagonista:   .word 50, 62      # Linha mais alta para o canhão mais alto, Coluna
-teclado:          .word 0xffff0000
-posNPC1:          .word 0, 64        # Linha, Coluna NPC1
-posNPC2:          .word 0, 20        # Linha, Coluna NPC2
-posNPC3:          .word 0, 90        # Linha, Coluna NPC3
-posNPC4:          .word 0, 40        # Linha, Coluna NPC4
-velocidadeNPC1:   .word 1           # Velocidade do NPC1
-velocidadeNPC2:   .word 1           # Velocidade do NPC2
-velocidadeNPC3:   .word 1           # Velocidade do NPC3
-velocidadeNPC4:   .word 1           # Velocidade do NPC4
+corNPC1:           .word 0x00FF0000 
+corNPC2:           .word 0x0000FFFF  
+corProtagonista:   .word 0x00606060  
+corFundo:          .word 0x00000000  
+corTiro:           .word 0x00FFFFFF  # Cor do tiro (branco)
+posProtagonista:   .word 50, 62
+teclado:           .word 0xffff0000
+
+posNPC1:           .word 0, 64
+posNPC2:           .word 0, 20
+posNPC3:           .word 0, 90
+posNPC4:           .word 0, 40
+
+velocidadeNPC1:    .word 1
+velocidadeNPC2:    .word 1
+velocidadeNPC3:    .word 1
+velocidadeNPC4:    .word 1
+
+contadorNPC1:      .word 0
+contadorNPC2:      .word 0
+contadorNPC3:      .word 0
+contadorNPC4:      .word 0
+
+posTiro:           .word -1, -1     # Posição inicial inválida (indicando que não há tiro)
+velocidadeTiro:    .word -2         # O tiro se move para cima (eixo Y diminui)
+ativoTiro:         .word 0          # 0 = tiro inativo, 1 = tiro ativo
 
 .text
 .globl main
 main:
-    li $8, 0x10010000 # início do display
-    
-    # Desenhar plataforma
+    li $8, 0x10010000
     lw $9, corPlataforma
-    li $10, 54 # linha inicial
+    li $10, 54
 plataforma_linhas:
     bgt $10, 63, desenhar_protagonista_inicial
-    li $11, 0 # coluna inicial
+    li $11, 0
 plataforma_colunas:
     bge $11, 128, prox_plataforma_linha
     mul $12, $10, 128
@@ -41,196 +51,575 @@ prox_plataforma_linha:
 
 desenhar_protagonista_inicial:
     lw $9, corProtagonista
-    lw $10, posProtagonista    # linha
-    lw $11, posProtagonista+4  # coluna
+    lw $10, posProtagonista
+    lw $11, posProtagonista+4
     jal desenhar_canhao
 
 game_loop:
-    # Verificar entrada do teclado
+    jal verificar_colisoes
+    
+    # Verificar vitória (todos NPCs mortos)
+    jal verificar_vitoria
+    
+    # Verificar e mover tiro se estiver ativo
+    lw $23, ativoTiro
+    beqz $23, ler_teclado  # Se tiro inativo, pular para ler teclado
+    
+    # Mover tiro
+    lw $9, corFundo
+    lw $10, posTiro
+    lw $11, posTiro+4
+    jal desenhar_ponto  # Apagar tiro atual
+    
+    lw $10, posTiro
+    lw $24, velocidadeTiro
+    add $10, $10, $24  # Mover tiro
+    sw $10, posTiro
+    
+    blez $10, desativar_tiro  # Se tiro saiu da tela, desativar
+    
+    # Verificar colisões do tiro com NPCs
+    jal verificar_colisao_tiro
+    
+    lw $23, ativoTiro
+    beqz $23, ler_teclado  # Se tiro foi desativado por colisão, pular
+    
+    lw $9, corTiro
+    lw $10, posTiro
+    lw $11, posTiro+4
+    jal desenhar_ponto  # Desenhar tiro na nova posição
+    
+ler_teclado:
+    # Ler teclado
     lw $15, teclado
     lw $16, 0($15)
     beqz $16, mover_npcs
-    
-    lw $17, 4($15) # pegar tecla pressionada
-    beq $17, 100, mover_direita  # 'd'
-    beq $17, 97, mover_esquerda   # 'a'
+
+    lw $17, 4($15)
+    beq $17, 100, mover_direita  
+    beq $17, 97, mover_esquerda  
+    beq $17, 32, atirar          # Tecla espaço (32) para atirar
     j mover_npcs
 
+atirar:
+    lw $23, ativoTiro
+    bnez $23, mover_npcs  # Se já há tiro ativo, não criar outro
+    
+    # Posicionar tiro acima do protagonista
+    lw $10, posProtagonista
+    addi $10, $10, -1  # Uma linha acima do protagonista
+    sw $10, posTiro
+    
+    lw $11, posProtagonista+4
+    addi $11, $11, 1   # Centralizado no protagonista
+    sw $11, posTiro+4
+    
+    li $23, 1
+    sw $23, ativoTiro
+    
+    lw $9, corTiro
+    jal desenhar_ponto
+    j mover_npcs
+
+desativar_tiro:
+    sw $0, ativoTiro
+    j ler_teclado
+
 mover_direita:
-    # Apagar canhão atual
     lw $10, posProtagonista
     lw $11, posProtagonista+4
     lw $9, corFundo
     jal desenhar_canhao
-    
-    # Atualizar posição (limite direito 125 para 3 pixels de largura)
     lw $11, posProtagonista+4
-    addi $11, $11, 1
+    addi $11, $11, 2  # Mover 2 pixels para direita (mais rápido)
     li $18, 125
     bgt $11, $18, limite_direito
     sw $11, posProtagonista+4
 limite_direito:
-    # Desenhar canhão novo
     lw $9, corProtagonista
     jal desenhar_canhao
     j mover_npcs
 
 mover_esquerda:
-    # Apagar canhão atual
     lw $10, posProtagonista
     lw $11, posProtagonista+4
     lw $9, corFundo
     jal desenhar_canhao
-    
-    # Atualizar posição (limite esquerdo 0)
     lw $11, posProtagonista+4
-    addi $11, $11, -1
+    addi $11, $11, -2  # Mover 2 pixels para esquerda (mais rápido)
     slt $18, $11, $0
     bnez $18, limite_esquerdo
     sw $11, posProtagonista+4
 limite_esquerdo:
-    # Desenhar canhão novo
     lw $9, corProtagonista
     jal desenhar_canhao
 
 mover_npcs:
-    # NPC1 - Movimento vertical com velocidade própria
-    lw $20, posNPC1        # linha
-    lw $21, posNPC1+4      # coluna
-    lw $22, velocidadeNPC1 # velocidade
+    # NPC1
+    lw $20, posNPC1
+    bltz $20, npc1_fim  # Se NPC1 foi "morto", pular
     
-    # Apagar NPC1 posição anterior
+    lw $29, contadorNPC1
+    addi $29, $29, 1
+    li $18, 3
+    bge $29, $18, npc1_move
+    sw $29, contadorNPC1
+    j npc1_fim
+npc1_move:
+    li $29, 0
+    sw $29, contadorNPC1
+
+    lw $20, posNPC1
+    lw $21, posNPC1+4
+    lw $22, velocidadeNPC1
+
     lw $9, corFundo
     move $10, $20
     move $11, $21
     jal desenhar_ponto
-    
-    # Atualizar posição NPC1 (cair)
+
     add $20, $20, $22
-    sw $20, posNPC1
-    
-    # Verificar se chegou ao final (reiniciar no topo)
     li $18, 54
-    ble $20, $18, desenhar_npc1
-    li $20, 0
+    bgt $20, $18, npc1_hit_ground  # Verificar se atingiu o chão
     sw $20, posNPC1
-desenhar_npc1:
+    j npc1_desenha
+npc1_hit_ground:
+    j game_over  # NPC1 atingiu o chão - game over
+npc1_desenha:
     lw $9, corNPC1
     move $10, $20
     move $11, $21
     jal desenhar_ponto
+npc1_fim:
 
-    # NPC2 - Movimento vertical com velocidade própria
-    lw $20, posNPC2        # linha
-    lw $21, posNPC2+4      # coluna
-    lw $22, velocidadeNPC2 # velocidade
+    # NPC2
+    lw $20, posNPC2
+    bltz $20, npc2_fim
     
-    # Apagar NPC2 posição anterior
+    lw $29, contadorNPC2
+    addi $29, $29, 1
+    li $18, 5
+    bge $29, $18, npc2_move
+    sw $29, contadorNPC2
+    j npc2_fim
+npc2_move:
+    li $29, 0
+    sw $29, contadorNPC2
+
+    lw $20, posNPC2
+    lw $21, posNPC2+4
+    lw $22, velocidadeNPC2
+
     lw $9, corFundo
     move $10, $20
     move $11, $21
     jal desenhar_ponto
-    
-    # Atualizar posição NPC2 (cair)
+
     add $20, $20, $22
-    sw $20, posNPC2
-    
-    # Verificar se chegou ao final (reiniciar no topo)
     li $18, 54
-    ble $20, $18, desenhar_npc2
-    li $20, 0
+    bgt $20, $18, npc2_hit_ground  # Verificar se atingiu o chão
     sw $20, posNPC2
-desenhar_npc2:
+    j npc2_desenha
+npc2_hit_ground:
+    j game_over  # NPC2 atingiu o chão - game over
+npc2_desenha:
     lw $9, corNPC2
     move $10, $20
     move $11, $21
     jal desenhar_ponto
+npc2_fim:
 
-    # NPC3 - Movimento vertical com velocidade própria
-    lw $20, posNPC3        # linha
-    lw $21, posNPC3+4      # coluna
-    lw $22, velocidadeNPC3 # velocidade
+    # NPC3
+    lw $20, posNPC3
+    bltz $20, npc3_fim
     
-    # Apagar NPC3 posição anterior
+    lw $29, contadorNPC3
+    addi $29, $29, 1
+    li $18, 7
+    bge $29, $18, npc3_move
+    sw $29, contadorNPC3
+    j npc3_fim
+npc3_move:
+    li $29, 0
+    sw $29, contadorNPC3
+
+    lw $20, posNPC3
+    lw $21, posNPC3+4
+    lw $22, velocidadeNPC3
+
     lw $9, corFundo
     move $10, $20
     move $11, $21
     jal desenhar_ponto
-    
-    # Atualizar posição NPC3 (cair)
+
     add $20, $20, $22
-    sw $20, posNPC3
-    
-    # Verificar se chegou ao final (reiniciar no topo)
     li $18, 54
-    ble $20, $18, desenhar_npc3
-    li $20, 0
+    bgt $20, $18, npc3_hit_ground  # Verificar se atingiu o chão
     sw $20, posNPC3
-desenhar_npc3:
+    j npc3_desenha
+npc3_hit_ground:
+    j game_over  # NPC3 atingiu o chão - game over
+npc3_desenha:
     lw $9, corNPC1
     move $10, $20
     move $11, $21
     jal desenhar_ponto
+npc3_fim:
 
-    # NPC4 - Movimento vertical com velocidade própria
-    lw $20, posNPC4        # linha
-    lw $21, posNPC4+4      # coluna
-    lw $22, velocidadeNPC4 # velocidade
+    # NPC4
+    lw $20, posNPC4
+    bltz $20, npc4_fim
     
-    # Apagar NPC4 posição anterior
+    lw $29, contadorNPC4
+    addi $29, $29, 1
+    li $18, 9
+    bge $29, $18, npc4_move
+    sw $29, contadorNPC4
+    j npc4_fim
+npc4_move:
+    li $29, 0
+    sw $29, contadorNPC4
+
+    lw $20, posNPC4
+    lw $21, posNPC4+4
+    lw $22, velocidadeNPC4
+
     lw $9, corFundo
     move $10, $20
     move $11, $21
     jal desenhar_ponto
-    
-    # Atualizar posição NPC4 (cair)
+
     add $20, $20, $22
-    sw $20, posNPC4
-    
-    # Verificar se chegou ao final (reiniciar no topo)
     li $18, 54
-    ble $20, $18, desenhar_npc4
-    li $20, 0
+    bgt $20, $18, npc4_hit_ground  # Verificar se atingiu o chão
     sw $20, posNPC4
-desenhar_npc4:
+    j npc4_desenha
+npc4_hit_ground:
+    j game_over  # NPC4 atingiu o chão - game over
+npc4_desenha:
     lw $9, corNPC2
     move $10, $20
     move $11, $21
     jal desenhar_ponto
+npc4_fim:
 
     jal delay
     j game_loop
 
+verificar_vitoria:
+    # Verificar se todos os NPCs foram mortos (posições Y negativas)
+    lw $20, posNPC1
+    bgez $20, fim_verificar_vitoria  # Se NPC1 ainda vivo, sair
+    
+    lw $20, posNPC2
+    bgez $20, fim_verificar_vitoria  # Se NPC2 ainda vivo, sair
+    
+    lw $20, posNPC3
+    bgez $20, fim_verificar_vitoria  # Se NPC3 ainda vivo, sair
+    
+    lw $20, posNPC4
+    bgez $20, fim_verificar_vitoria  # Se NPC4 ainda vivo, sair
+    
+    # Todos NPCs mortos - vitória!
+    li $9, 0x0000FF00   # Cor verde para vitória
+    li $10, 30
+    li $11, 50
+    jal desenhar_vitoria
+    j fim_jogo
+    
+fim_verificar_vitoria:
+    jr $ra
+
+desenhar_vitoria:
+    li $12, 0
+loop_vitoria:
+    bge $12, 10, fim_vitoria
+    li $13, 0
+loop_cols_vitoria:
+    bge $13, 20, prox_linha_vitoria
+    add $14, $10, $12
+    add $15, $11, $13
+    mul $16, $14, 128
+    add $16, $16, $15
+    mul $16, $16, 4
+    add $17, $8, $16
+    sw $9, 0($17)
+    addi $13, $13, 1
+    j loop_cols_vitoria
+prox_linha_vitoria:
+    addi $12, $12, 1
+    j loop_vitoria
+fim_vitoria:
+    jr $ra
+
+verificar_colisao_tiro:
+    lw $10, posTiro        # Y do tiro
+    lw $11, posTiro+4      # X do tiro
+    
+    # Verificar colisão com NPC1 (hitbox aumentada)
+    lw $20, posNPC1        # Y do NPC1
+    bltz $20, check_tiro_npc2  # Se NPC1 morto, pular
+    
+    lw $21, posNPC1+4      # X do NPC1
+    
+    # Verificar se tiro está dentro da área aumentada do NPC (2 pixels em todas as direções)
+    addi $18, $20, 2       # Y + 2
+    addi $19, $20, -2      # Y - 2
+    ble $10, $18, check_npc1_y_min
+    j check_tiro_npc2
+check_npc1_y_min:
+    bge $10, $19, check_npc1_x_range
+    j check_tiro_npc2
+check_npc1_x_range:
+    addi $18, $21, 2       # X + 2
+    addi $19, $21, -2      # X - 2
+    ble $11, $18, check_npc1_x_min
+    j check_tiro_npc2
+check_npc1_x_min:
+    bge $11, $19, hit_npc1
+    j check_tiro_npc2
+hit_npc1:
+    # Colisão com NPC1 detectada
+    lw $9, corFundo
+    move $10, $20
+    move $11, $21
+    jal desenhar_ponto     # Apagar NPC1
+    
+    li $20, -1
+    sw $20, posNPC1        # Marcar NPC1 como morto
+    j desativar_tiro       # Desativar tiro
+    
+check_tiro_npc2:
+    lw $20, posNPC2        # Y do NPC2
+    bltz $20, check_tiro_npc3  # Se NPC2 morto, pular
+    
+    lw $21, posNPC2+4      # X do NPC2
+    
+    # Verificar se tiro está dentro da área aumentada do NPC
+    addi $18, $20, 2       # Y + 2
+    addi $19, $20, -2      # Y - 2
+    ble $10, $18, check_npc2_y_min
+    j check_tiro_npc3
+check_npc2_y_min:
+    bge $10, $19, check_npc2_x_range
+    j check_tiro_npc3
+check_npc2_x_range:
+    addi $18, $21, 2       # X + 2
+    addi $19, $21, -2      # X - 2
+    ble $11, $18, check_npc2_x_min
+    j check_tiro_npc3
+check_npc2_x_min:
+    bge $11, $19, hit_npc2
+    j check_tiro_npc3
+hit_npc2:
+    # Colisão com NPC2 detectada
+    lw $9, corFundo
+    move $10, $20
+    move $11, $21
+    jal desenhar_ponto     # Apagar NPC2
+    
+    li $20, -1
+    sw $20, posNPC2        # Marcar NPC2 como morto
+    j desativar_tiro       # Desativar tiro
+    
+check_tiro_npc3:
+    lw $20, posNPC3        # Y do NPC3
+    bltz $20, check_tiro_npc4  # Se NPC3 morto, pular
+    
+    lw $21, posNPC3+4      # X do NPC3
+    
+    # Verificar se tiro está dentro da área aumentada do NPC
+    addi $18, $20, 2       # Y + 2
+    addi $19, $20, -2      # Y - 2
+    ble $10, $18, check_npc3_y_min
+    j check_tiro_npc4
+check_npc3_y_min:
+    bge $10, $19, check_npc3_x_range
+    j check_tiro_npc4
+check_npc3_x_range:
+    addi $18, $21, 2       # X + 2
+    addi $19, $21, -2      # X - 2
+    ble $11, $18, check_npc3_x_min
+    j check_tiro_npc4
+check_npc3_x_min:
+    bge $11, $19, hit_npc3
+    j check_tiro_npc4
+hit_npc3:
+    # Colisão com NPC3 detectada
+    lw $9, corFundo
+    move $10, $20
+    move $11, $21
+    jal desenhar_ponto     # Apagar NPC3
+    
+    li $20, -1
+    sw $20, posNPC3        # Marcar NPC3 como morto
+    j desativar_tiro       # Desativar tiro
+    
+check_tiro_npc4:
+    lw $20, posNPC4        # Y do NPC4
+    bltz $20, fim_verificar_tiro  # Se NPC4 morto, pular
+    
+    lw $21, posNPC4+4      # X do NPC4
+    
+    # Verificar se tiro está dentro da área aumentada do NPC
+    addi $18, $20, 2       # Y + 2
+    addi $19, $20, -2      # Y - 2
+    ble $10, $18, check_npc4_y_min
+    j fim_verificar_tiro
+check_npc4_y_min:
+    bge $10, $19, check_npc4_x_range
+    j fim_verificar_tiro
+check_npc4_x_range:
+    addi $18, $21, 2       # X + 2
+    addi $19, $21, -2      # X - 2
+    ble $11, $18, check_npc4_x_min
+    j fim_verificar_tiro
+check_npc4_x_min:
+    bge $11, $19, hit_npc4
+    j fim_verificar_tiro
+hit_npc4:
+    # Colisão com NPC4 detectada
+    lw $9, corFundo
+    move $10, $20
+    move $11, $21
+    jal desenhar_ponto     # Apagar NPC4
+    
+    li $20, -1
+    sw $20, posNPC4        # Marcar NPC4 como morto
+    j desativar_tiro       # Desativar tiro
+    
+fim_verificar_tiro:
+    jr $ra
+
+verificar_colisoes:
+    lw $4, posProtagonista     
+    lw $5, posProtagonista+4   
+    
+    # Área do protagonista
+    addi $18, $4, 3    
+    addi $19, $5, 2    
+    
+    # Verificar colisão com NPC1
+    lw $6, posNPC1      
+    bltz $6, check_npc2  # Se NPC1 foi morto, pular
+    lw $7, posNPC1+4    
+    
+    bge $6, $4, check_npc1_y_max
+    j check_npc2
+check_npc1_y_max:
+    ble $6, $18, check_npc1_x
+    j check_npc2
+check_npc1_x:
+    bge $7, $5, check_npc1_x_max
+    j check_npc2
+check_npc1_x_max:
+    ble $7, $19, game_over
+    
+    # Verificar colisão com NPC2
+check_npc2:
+    lw $6, posNPC2      
+    bltz $6, check_npc3
+    lw $7, posNPC2+4   
+    
+    bge $6, $4, check_npc2_y_max
+    j check_npc3
+check_npc2_y_max:
+    ble $6, $18, check_npc2_x
+    j check_npc3
+check_npc2_x:
+    bge $7, $5, check_npc2_x_max
+    j check_npc3
+check_npc2_x_max:
+    ble $7, $19, game_over
+    
+    # Verificar colisão com NPC3
+check_npc3:
+    lw $6, posNPC3      
+    bltz $6, check_npc4
+    lw $7, posNPC3+4    
+    
+    bge $6, $4, check_npc3_y_max
+    j check_npc4
+check_npc3_y_max:
+    ble $6, $18, check_npc3_x
+    j check_npc4
+check_npc3_x:
+    bge $7, $5, check_npc3_x_max
+    j check_npc4
+check_npc3_x_max:
+    ble $7, $19, game_over
+    
+    # Verificar colisão com NPC4
+check_npc4:
+    lw $6, posNPC4      
+    bltz $6, fim_verificacao
+    lw $7, posNPC4+4    
+    
+    bge $6, $4, check_npc4_y_max
+    j fim_verificacao
+check_npc4_y_max:
+    ble $6, $18, check_npc4_x
+    j fim_verificacao
+check_npc4_x:
+    bge $7, $5, check_npc4_x_max
+    j fim_verificacao
+check_npc4_x_max:
+    ble $7, $19, game_over
+    
+fim_verificacao:
+    jr $ra
+
+# Game Over
+game_over:
+    li $9, 0x00FF0000   
+    li $10, 30
+    li $11, 50
+    jal desenhar_gameover
+    j fim_jogo
+
+desenhar_gameover:
+    li $12, 0
+loop_gameover:
+    bge $12, 10, fim_gameover
+    li $13, 0
+loop_cols:
+    bge $13, 20, prox_linha
+    add $14, $10, $12
+    add $15, $11, $13
+    mul $16, $14, 128
+    add $16, $16, $15
+    mul $16, $16, 4
+    add $17, $8, $16
+    sw $9, 0($17)
+    addi $13, $13, 1
+    j loop_cols
+prox_linha:
+    addi $12, $12, 1
+    j loop_gameover
+fim_gameover:
+    jr $ra
+
 desenhar_canhao:
-    # Desenha um canhão de 3x4 pixels
-    li $14, 0          # contador de linhas (0 a 3)
+    li $14, 0
 canhao_loop:
     bge $14, 4, fim_canhao
-    li $15, 0          # contador de colunas (0 a 2)
+    li $15, 0
 canhao_colunas:
     bge $15, 3, prox_canhao_linha
-    
-    # Calcular posição
-    add $16, $10, $14  # linha atual
-    add $17, $11, $15  # coluna atual
-    
-    # Verificar limites
-    bge $16, 64, prox_canhao_linha  # abaixo da tela
-    blt $16, 0, prox_canhao_linha   # acima da tela
-    bge $17, 128, prox_canhao_coluna # direita da tela
-    blt $17, 0, prox_canhao_coluna   # esquerda da tela
-    
-    # Desenhar pixel
+    add $16, $10, $14
+    add $17, $11, $15
+    bge $16, 64, prox_canhao_linha
+    blt $16, 0, prox_canhao_linha
+    bge $17, 128, prox_canhao_coluna
+    blt $17, 0, prox_canhao_coluna
     mul $18, $16, 128
     add $18, $18, $17
     mul $18, $18, 4
     add $19, $8, $18
     sw $9, 0($19)
-    
 prox_canhao_coluna:
     addi $15, $15, 1
     j canhao_colunas
-    
 prox_canhao_linha:
     addi $14, $14, 1
     j canhao_loop
@@ -238,7 +627,6 @@ fim_canhao:
     jr $ra
 
 desenhar_ponto:
-    # Desenha um ponto (1 pixel)
     mul $12, $10, 128
     add $12, $12, $11
     mul $12, $12, 4
@@ -247,7 +635,7 @@ desenhar_ponto:
     jr $ra
 
 delay:
-    li $14, 25000  # Ajuste este valor para mudar a velocidade geral do jogo
+    li $14, 25000
 espera:
     beqz $14, fim_delay
     addi $14, $14, -1
@@ -255,6 +643,5 @@ espera:
 fim_delay:
     jr $ra
 
-fim:
-    addi $2, $0, 10
-    syscall
+fim_jogo:
+    j fim_jogo
