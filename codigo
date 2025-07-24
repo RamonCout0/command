@@ -1,4 +1,4 @@
-.data
+.kdata
 corPlataforma:     .word 0xa28738
 corNPC1:           .word 0x00FF0000 
 corNPC2:           .word 0x0000FFFF  
@@ -13,10 +13,10 @@ posNPC2:           .word 0, 20
 posNPC3:           .word 0, 90
 posNPC4:           .word 0, 40
 
-velocidadeNPC1:    .word 1
-velocidadeNPC2:    .word 1
-velocidadeNPC3:    .word 1
-velocidadeNPC4:    .word 1
+velocidadeNPC1:    .word 2 # do meio
+velocidadeNPC2:    .word 1 # o primeiro da esquerda
+velocidadeNPC3:    .word 3 # o ultimo da direita
+velocidadeNPC4:    .word 2 # o segundo da esquerda
 
 contadorNPC1:      .word 0
 contadorNPC2:      .word 0
